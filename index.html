@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESLock Cyber Gallery OS</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-deep: #050509; --bg-card: #0c0c14; --bg-folder: #10101a;
+            --text-main: #e0e0f0; --text-muted: #9090b0; --border: #1a1a2e;
+            --c-purple: #883aea; --c-blue: #1a73e8;
+            --gradient: linear-gradient(135deg, var(--c-purple) 0%, var(--c-blue) 100%);
+            --glow: 0 0 15px rgba(136, 58, 234, 0.4);
+        }
+
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes floating { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-deep); color: var(--text-main);
+            margin: 0; padding: 2rem; box-sizing: border-box; min-height: 100vh; overflow-x: hidden;
+        }
+
+        header { text-align: center; margin-bottom: 2rem; animation: fadeInUp 0.6s ease-out; }
+        h1 {
+            background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 2.5rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 2px; display: inline-block;
+        }
+        p.subtitle { color: var(--text-muted); font-size: 1rem; margin-top: 0; }
+
+        /* Botões de Upload */
+        .upload-controls {
+            display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 2rem; flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .upload-btn {
+            background-color: var(--bg-card); border: 1px solid var(--border); color: var(--text-main);
+            padding: 1.2rem 2.5rem; border-radius: 12px; cursor: pointer; font-weight: 600;
+            transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; min-width: 220px;
+            position: relative; overflow: hidden;
+        }
+        .upload-btn::after {
+            content: ''; position: absolute; inset: 0; background: var(--gradient);
+            opacity: 0; transition: opacity 0.3s; z-index: 0; border-radius: 12px;
+        }
+        .upload-btn:hover { transform: translateY(-3px); box-shadow: var(--glow); border-color: transparent; }
+        .upload-btn:hover::after { opacity: 0.15; }
+        .upload-btn * { z-index: 1; position: relative; }
+        .upload-btn span { font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-top: 0.5rem; }
+        input[type="file"] { display: none; }
+
+        /* Controles de Visualização */
+        .view-controls {
+            display: flex; justify-content: center; align-items: center; gap: 1rem;
+            margin-bottom: 1.5rem; animation: fadeInUp 1s ease-out;
+            background-color: var(--bg-card); padding: 0.8rem 1.5rem; border-radius: 50px;
+            border: 1px solid var(--border); width: fit-content; margin-left: auto; margin-right: auto;
+        }
+        .view-controls span { color: var(--text-muted); font-weight: bold; font-size: 0.9rem; }
+        .view-toggle { display: flex; gap: 0.5rem; }
+        .view-toggle input { display: none; }
+        .view-toggle label {
+            padding: 0.5rem 1.2rem; border-radius: 30px; cursor: pointer; font-size: 0.9rem;
+            color: var(--text-muted); transition: all 0.3s ease; border: 1px solid transparent;
+        }
+        .view-toggle input:checked + label {
+            background: rgba(136, 58, 234, 0.2); color: #fff; border-color: var(--c-purple); box-shadow: var(--glow);
+        }
+
+        /* Sub-filtros para Tipos de Arquivo (NOVO) */
+        .type-filters {
+            display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem;
+            animation: fadeInUp 0.5s ease-out; flex-wrap: wrap;
+        }
+        .filter-btn {
+            background-color: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-muted); padding: 0.5rem 1.2rem; border-radius: 20px;
+            cursor: pointer; transition: all 0.3s ease; font-size: 0.85rem; font-weight: bold;
+        }
+        .filter-btn:hover { border-color: var(--c-purple); color: var(--text-main); }
+        .filter-btn.active {
+            background: var(--gradient); color: white; border-color: transparent; box-shadow: var(--glow);
+        }
+
+        .status { text-align: center; margin-bottom: 2rem; font-weight: bold; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-family: monospace; }
+
+        /* Galeria */
+        #galleryContainer { width: 100%; max-width: 1400px; margin: 0 auto; }
+
+        .folder-section {
+            background-color: var(--bg-folder); border: 1px solid var(--border); border-radius: 16px;
+            padding: 2rem; margin-bottom: 2.5rem; animation: fadeInUp 0.5s ease-out; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .folder-title {
+            color: var(--text-main); font-size: 1.5rem; margin-top: 0; margin-bottom: 2rem;
+            padding-bottom: 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.8rem;
+        }
+        .folder-title span { color: var(--c-purple); font-size: 1.8rem; }
+
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2rem; padding: 10px 0; }
+
+        .gallery-item {
+            background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; position: relative;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+            animation-name: floating; animation-iteration-count: infinite; animation-timing-function: ease-in-out;
+        }
+        .gallery-item:hover {
+            animation-play-state: paused; transform: scale(1.05) translateY(-5px) !important;
+            box-shadow: 0 10px 30px rgba(136, 58, 234, 0.5); border-color: var(--c-purple); z-index: 10;
+        }
+
+        .item-number {
+            position: absolute; top: 10px; left: 10px; background: var(--gradient); color: white;
+            font-size: 0.8rem; font-weight: bold; padding: 4px 10px; border-radius: 20px;
+            z-index: 5; box-shadow: 0 2px 5px rgba(0,0,0,0.5); font-family: monospace;
+        }
+
+        .media-container { width: 100%; height: 200px; display: flex; justify-content: center; align-items: center; background-color: #000; overflow: hidden; position: relative; }
+        .media-container img, .media-container video { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; cursor: pointer; }
+        .gallery-item:hover .media-container img { transform: scale(1.05); }
+        .media-container audio { width: 90%; z-index: 2; filter: invert(0.9) hue-rotate(180deg); }
+        .media-container .doc-icon { font-size: 4rem; }
+        .media-container .download-btn { position: absolute; bottom: 15px; background: var(--gradient); border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; z-index: 2; }
+
+        .gallery-item .info {
+            padding: 1rem; text-align: center; display: flex; flex-direction: column; gap: 0.6rem;
+            border-top: 1px solid var(--border); background-color: rgba(12, 12, 20, 0.8); flex-grow: 1;
+        }
+        .gallery-item .filename { font-size: 0.85rem; color: var(--text-main); font-weight: bold; word-break: break-all; }
+        .gallery-item .key-display { font-size: 0.7rem; color: var(--c-blue); font-family: 'Courier New', monospace; background-color: rgba(0, 0, 0, 0.3); padding: 0.4rem; border-radius: 6px; word-break: break-all; border: 1px solid rgba(26, 115, 232, 0.2); }
+
+        #lightbox {
+            position: fixed; inset: 0; background-color: rgba(0,0,0,0.95); display: none;
+            justify-content: center; align-items: center; flex-direction: column;
+            z-index: 1000; opacity: 0; transition: opacity 0.3s ease; backdrop-filter: blur(10px);
+        }
+        #lightbox.active { display: flex; opacity: 1; }
+        
+        .lightbox-close {
+            position: absolute; top: 20px; right: 30px; color: var(--text-main);
+            font-size: 3rem; cursor: pointer; line-height: 1; transition: color 0.2s; z-index: 1001;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        .lightbox-close:hover { color: var(--c-purple); text-shadow: var(--glow); }
+
+        #lightbox-content-wrapper { max-width: 90%; max-height: 80vh; display: flex; justify-content: center; align-items: center; }
+        #lightbox-content-wrapper img, #lightbox-content-wrapper video { max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        #lightbox-caption { margin-top: 20px; color: #fff; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 4px; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Cyber Gallery OS</h1>
+        <p class="subtitle">Desencriptação Offline & Organização Dinâmica</p>
+    </header>
+
+    <div class="upload-controls">
+        <label class="upload-btn">
+            Carregar Pasta
+            <span>Processar subpastas recursivamente</span>
+            <input type="file" id="folderInput" webkitdirectory directory multiple />
+        </label>
+        <label class="upload-btn">
+            Carregar ZIP
+            <span>Desencriptar arquivo compactado</span>
+            <input type="file" id="zipInput" accept=".zip" />
+        </label>
+    </div>
+
+    <div class="view-controls">
+        <span>Agrupar por:</span>
+        <div class="view-toggle">
+            <input type="radio" id="viewFolder" name="viewMode" value="folder" checked>
+            <label for="viewFolder">Pastas</label>
+            
+            <input type="radio" id="viewType" name="viewMode" value="type">
+            <label for="viewType">Tipos de Arquivo</label>
+        </div>
+    </div>
+
+    <div id="typeFilters" class="type-filters" style="display: none;">
+        <button class="filter-btn active" data-filter="all">Todos</button>
+        <button class="filter-btn" data-filter="image">🖼️ Imagens</button>
+        <button class="filter-btn" data-filter="video">🎬 Vídeos</button>
+        <button class="filter-btn" data-filter="audio">🎵 Áudios</button>
+        <button class="filter-btn" data-filter="doc">📄 Outros/Doc</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    <div id="galleryContainer"></div>
+
+    <div id="lightbox">
+        <span class="lightbox-close" id="closeLightbox">&times;</span>
+        <div id="lightbox-content-wrapper"></div>
+        <div id="lightbox-caption"></div>
+    </div>
+
+    <script>
+        const galleryContainer = document.getElementById('galleryContainer');
+        const statusDiv = document.getElementById('status');
+        const lightbox = document.getElementById('lightbox');
+        const lightboxContent = document.getElementById('lightbox-content-wrapper');
+        const lightboxCaption = document.getElementById('lightbox-caption');
+        const closeLightboxBtn = document.getElementById('closeLightbox');
+        
+        const typeFiltersContainer = document.getElementById('typeFilters');
+        const filterBtns = document.querySelectorAll('.filter-btn');
+
+        let globalMemoryFiles = []; 
+        let activeGrids = new Map();
+        let currentTypeFilter = 'all'; // Rastreador do filtro ativo
+
+        function updateStatus(msg) { statusDiv.textContent = `> ${msg}`; }
+
+        // --- Lightbox ---
+        function openLightbox(src, name, type) {
+            lightboxContent.innerHTML = ''; 
+            if (type === 'image') {
+                const img = document.createElement('img'); img.src = src; lightboxContent.appendChild(img);
+            } else if (type === 'video') {
+                const vid = document.createElement('video'); vid.src = src; vid.controls = true; vid.autoplay = true; lightboxContent.appendChild(vid);
+            }
+            lightboxCaption.textContent = name;
+            lightbox.classList.add('active');
+        }
+
+        function closeLightbox() {
+            lightbox.classList.remove('active');
+            lightboxContent.innerHTML = ''; 
+        }
+
+        closeLightboxBtn.addEventListener('click', closeLightbox);
+        lightbox.addEventListener('click', (e) => { if (e.target === lightbox || e.target === lightboxContent) closeLightbox(); });
+
+        // --- Categorização ---
+        function getFileTypeInfo(fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return { type: 'image', cat: 'Imagens', icon: '🖼️' };
+            if (['mp4', 'webm', 'ogg', 'mov', 'mkv'].includes(ext)) return { type: 'video', cat: 'Vídeos', icon: '🎬' };
+            if (['mp3', 'wav', 'm4a', 'aac', 'flac'].includes(ext)) return { type: 'audio', cat: 'Áudios', icon: '🎵' };
+            if (['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx'].includes(ext)) return { type: 'doc', cat: 'Documentos', icon: '📄' };
+            return { type: 'other', cat: 'Outros Ficheiros', icon: '📦' };
+        }
+
+        // --- Renderização Dinâmica da Galeria ---
+        function getSectionGrid(groupKey, iconLabel) {
+            if (activeGrids.has(groupKey)) return activeGrids.get(groupKey);
+            const section = document.createElement('div'); section.className = 'folder-section';
+            const title = document.createElement('h3'); title.className = 'folder-title'; title.innerHTML = iconLabel;
+            const grid = document.createElement('div'); grid.className = 'gallery-grid';
+            section.appendChild(title); section.appendChild(grid); galleryContainer.appendChild(section);
+            activeGrids.set(groupKey, grid); return grid;
+        }
+
+        function createItemElement(fileData, index) {
+            const blobUrl = URL.createObjectURL(fileData.blob);
+            const item = document.createElement('div'); item.className = 'gallery-item';
+            
+            item.style.animationDuration = (Math.random() * 3 + 3).toFixed(2) + 's'; 
+            item.style.animationDelay = (Math.random() * -5).toFixed(2) + 's'; 
+
+            const numBadge = document.createElement('div'); numBadge.className = 'item-number';
+            numBadge.textContent = (index + 1).toString().padStart(3, '0'); item.appendChild(numBadge);
+
+            const mediaContainer = document.createElement('div'); mediaContainer.className = 'media-container';
+
+            if (fileData.info.type === 'image') {
+                const img = document.createElement('img'); img.src = blobUrl; img.loading = "lazy"; 
+                img.addEventListener('click', () => openLightbox(blobUrl, fileData.name, 'image')); mediaContainer.appendChild(img);
+            } 
+            else if (fileData.info.type === 'video') {
+                const vid = document.createElement('video'); vid.src = blobUrl; vid.muted = true; 
+                vid.addEventListener('click', () => openLightbox(blobUrl, fileData.name, 'video')); mediaContainer.appendChild(vid);
+            }
+            else if (fileData.info.type === 'audio') {
+                const aud = document.createElement('audio'); aud.src = blobUrl; aud.controls = true; mediaContainer.appendChild(aud);
+            }
+            else {
+                const icon = document.createElement('div'); icon.className = 'doc-icon'; icon.textContent = fileData.info.icon;
+                const btn = document.createElement('button'); btn.className = 'download-btn'; btn.textContent = 'Guardar';
+                btn.addEventListener('click', () => { const a = document.createElement('a'); a.href = blobUrl; a.download = fileData.name; a.click(); });
+                mediaContainer.appendChild(icon); mediaContainer.appendChild(btn);
+            }
+
+            const infoDiv = document.createElement('div'); infoDiv.className = 'info';
+            const nameDiv = document.createElement('div'); nameDiv.className = 'filename'; nameDiv.textContent = fileData.name;
+            const keyDiv = document.createElement('div'); keyDiv.className = 'key-display'; keyDiv.textContent = `🔑 ${fileData.key.substring(0, 16)}...`;
+
+            infoDiv.appendChild(nameDiv); infoDiv.appendChild(keyDiv);
+            item.appendChild(mediaContainer); item.appendChild(infoDiv);
+            return item;
+        }
+
+        // --- Sistema de Renderização com Filtro ---
+        function renderGallery() {
+            galleryContainer.innerHTML = '';
+            activeGrids.clear();
+            const viewMode = document.querySelector('input[name="viewMode"]:checked').value;
+            let displayCounter = 0; 
+
+            globalMemoryFiles.forEach((fileData) => {
+                // Se estiver no modo "Tipo", ignora os arquivos que não passarem no filtro
+                if (viewMode === 'type' && currentTypeFilter !== 'all') {
+                    let fType = fileData.info.type;
+                    // Tratar documentos e "outros" como o mesmo filtro
+                    if (currentTypeFilter === 'doc' && (fType !== 'doc' && fType !== 'other')) return;
+                    if (currentTypeFilter !== 'doc' && fType !== currentTypeFilter) return;
+                }
+
+                let grid;
+                if (viewMode === 'folder') {
+                    grid = getSectionGrid(fileData.folder, `<span>📁</span> ${fileData.folder}`);
+                } else {
+                    grid = getSectionGrid(fileData.info.cat, `<span>${fileData.info.icon}</span> ${fileData.info.cat}`);
+                }
+                
+                const itemEl = createItemElement(fileData, displayCounter++);
+                grid.appendChild(itemEl);
+            });
+        }
+
+        // Listener para a troca de visualização principal (Pastas vs Tipos)
+        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'type') {
+                    typeFiltersContainer.style.display = 'flex';
+                } else {
+                    typeFiltersContainer.style.display = 'none';
+                }
+                renderGallery();
+            });
+        });
+
+        // Listener para os botões de sub-filtro (Imagens, Vídeos, etc.)
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentTypeFilter = e.target.getAttribute('data-filter');
+                renderGallery();
+            });
+        });
+
+
+        // --- Criptografia e Processamento ---
+        function decryptBlock(encryptedBuffer, key, iv) {
+            const encryptedWordArray = CryptoJS.lib.WordArray.create(encryptedBuffer);
+            const decrypted = CryptoJS.AES.decrypt(
+                { ciphertext: encryptedWordArray }, key, { iv: iv, mode: CryptoJS.mode.CFB, padding: CryptoJS.pad.NoPadding }
+            );
+            const words = decrypted.words; const sigBytes = decrypted.sigBytes;
+            const u8 = new Uint8Array(sigBytes);
+            for (let i = 0; i < sigBytes; i++) u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+            return u8;
+        }
+
+        async function processEslockFile(arrayBuffer, fileName) {
+            const totalSize = arrayBuffer.byteLength;
+            if (totalSize < 29) throw new Error("Arquivo inválido");
+
+            const dv = new DataView(arrayBuffer);
+            const iv = CryptoJS.enc.Hex.parse("000102030405060708090a0b0c0d0e0f");
+            
+            const keyBytes = new Uint8Array(arrayBuffer, totalSize - 29, 16);
+            const keyHex = Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const key = CryptoJS.enc.Hex.parse(keyHex);
+
+            const int2 = dv.getInt32(totalSize - 4, false);
+            const condByte = dv.getInt8(totalSize - int2);
+            let condition1 = (condByte !== -1);
+            let int3 = condition1 ? dv.getInt32(totalSize - int2 + 1, false) : -1;
+
+            const outputChunks = [];
+
+            if (condition1) {
+                outputChunks.push(decryptBlock(arrayBuffer.slice(0, int3), key, iv));
+                outputChunks.push(new Uint8Array(arrayBuffer, int3, (totalSize - int2 - int3) - int3));
+                outputChunks.push(decryptBlock(arrayBuffer.slice(totalSize - int2 - int3, totalSize - int2), key, iv));
+            } else {
+                let offset = 0; const end = totalSize - int2; const chunkSize = 16384;
+                while (offset < end) {
+                    const currentSize = Math.min(chunkSize, end - offset);
+                    outputChunks.push(decryptBlock(arrayBuffer.slice(offset, offset + currentSize), key, iv));
+                    offset += currentSize;
+                }
+            }
+
+            let cleanName = fileName.replace(/\.eslock$/i, '');
+            let mimeType = "application/octet-stream"; 
+            if (cleanName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) mimeType = "image/" + cleanName.split('.').pop();
+            else if (cleanName.match(/\.(mp4|webm)$/i)) mimeType = "video/" + cleanName.split('.').pop();
+            else if (cleanName.match(/\.(mp3|wav|ogg)$/i)) mimeType = "audio/" + cleanName.split('.').pop();
+            else if (cleanName.match(/\.pdf$/i)) mimeType = "application/pdf";
+
+            return { blob: new Blob(outputChunks, { type: mimeType }), extractedKey: keyHex, cleanName: cleanName };
+        }
+
+        function extractFolderPath(fullPath) {
+            if (!fullPath || !fullPath.includes('/')) return "Raiz";
+            return fullPath.substring(0, fullPath.lastIndexOf('/'));
+        }
+
+        document.getElementById('folderInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.eslock'));
+            if (files.length === 0) return updateStatus("Nenhum .eslock encontrado.");
+            
+            updateStatus(`A processar e armazenar ${files.length} ficheiros na RAM...`);
+            globalMemoryFiles = []; 
+            
+            for (let i = 0; i < files.length; i++) {
+                try {
+                    const file = files[i];
+                    const result = await processEslockFile(await file.arrayBuffer(), file.name);
+                    const folderPath = extractFolderPath(file.webkitRelativePath || file.name);
+                    
+                    globalMemoryFiles.push({
+                        blob: result.blob,
+                        name: result.cleanName,
+                        key: result.extractedKey,
+                        folder: folderPath,
+                        info: getFileTypeInfo(result.cleanName)
+                    });
+                } catch (err) { console.error(err); }
+            }
+            renderGallery();
+            updateStatus("Desencriptação concluída! Filtros disponíveis no modo 'Tipos de Arquivo'.");
+        });
+
+        document.getElementById('zipInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            updateStatus("A ler o arquivo ZIP...");
+
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const eslockFiles = Object.values(zip.files).filter(f => !f.dir && f.name.toLowerCase().endsWith('.eslock'));
+                if (eslockFiles.length === 0) return updateStatus("Nenhum .eslock no ZIP.");
+
+                updateStatus(`A processar e armazenar ${eslockFiles.length} ficheiros do ZIP...`);
+                globalMemoryFiles = []; 
+
+                for (const zipEntry of eslockFiles) {
+                    try {
+                        const fileName = zipEntry.name.split('/').pop();
+                        const result = await processEslockFile(await zipEntry.async("arraybuffer"), fileName);
+                        const folderPath = extractFolderPath(zipEntry.name);
+                        
+                        globalMemoryFiles.push({
+                            blob: result.blob,
+                            name: result.cleanName,
+                            key: result.extractedKey,
+                            folder: folderPath,
+                            info: getFileTypeInfo(result.cleanName)
+                        });
+                    } catch (err) { console.error(err); }
+                }
+                renderGallery();
+                updateStatus("ZIP processado! Filtros disponíveis no modo 'Tipos de Arquivo'.");
+            } catch (error) { updateStatus("Erro no fluxo ZIP."); }
+        });
+    </script>
+</body>
+</html>
